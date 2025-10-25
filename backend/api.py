@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+import json
 from PIL import Image
 from typing import Dict
 from datetime import datetime
@@ -12,7 +13,7 @@ from pydantic import BaseModel
 from typing import List
 import pandas as pd
 from reports import Reports
-from models import QuestionnaireDataModel, DashboardDataModel
+from models import GoogleFormsTranslationMap, QuestionnaireDataModel, DashboardDataModel
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from data_processor import DataProcessor
@@ -161,15 +162,25 @@ async def delete_report(timestamp: str):
 BASIC_USER = os.environ.get("BASIC_AUTH_USER")
 BASIC_PASS = os.environ.get("BASIC_AUTH_PASS")
 ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 
 @app.middleware("http")
 async def security_gate(request: Request, call_next):
-    # Token (opcjonalnie) – możesz pominąć jeśli nie chcesz
+    # Bypass dla webhooka, ale tylko z tajnym sekretem
+    path = request.url.path
+    if path.startswith("/webhook"):
+        secret = request.headers.get("x-webhook-secret") or request.query_params.get("secret")
+        if WEBHOOK_SECRET and secret == WEBHOOK_SECRET:
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized webhook"}, status_code=401)
+
+    # Token (opcjonalnie)
     if ACCESS_TOKEN:
         token = request.headers.get("x-access-token") or request.headers.get("authorization", "").replace("Bearer ", "").strip()
         if token and token == ACCESS_TOKEN:
             return await call_next(request)
-    # Basic Auth (przed dostępem do całej aplikacji)
+
+    # Basic Auth (globalnie)
     if BASIC_USER and BASIC_PASS:
         auth = request.headers.get("authorization") or ""
         parts = auth.split(" ", 1)
@@ -186,7 +197,6 @@ async def security_gate(request: Request, call_next):
             status_code=401,
             headers={"WWW-Authenticate": 'Basic realm="Protected"'}
         )
-    # Gdy brak skonfigurowanych haseł – przepuszczaj
     return await call_next(request)
 
 @app.get("/api/courses/{university}", response_model=CourseResponse)
@@ -243,7 +253,6 @@ def get_user_data():
     file_path = "../data/login/login_data.xlsx"
     if os.path.exists(file_path):
         df = pd.read_excel(file_path, header=0)
-        # print("userdata" , df)
         return df
     else:
         return pd.DataFrame(columns=["email", "password", "isAdmin", "university"])
@@ -401,14 +410,26 @@ async def get_dashboard_data(university: str = Query(None)):
 @app.post("/webhook")
 async def webhook(request: Request):
     data = await request.json()
+    university = data.get("university") or "UAL"
+    form_answers = data.get("answers") or data.get("formData") or data.get("namedValues") or {}
+
+    mapped_data = {}
+    for key, value in form_answers.items():
+        if key in GoogleFormsTranslationMap:
+            mapped_field = GoogleFormsTranslationMap[key]
+            mapped_data[mapped_field] = value
+        else:
+            print(f"Unmapped question: {key}")
+
+    questionnaire_data = QuestionnaireDataModel(
+        answers=[{"id": k, "answer": v} for k, v in mapped_data.items()],
+        source= university
+    )
     
-    print("Received data from Google Forms:", data)
-    # Process the data as needed
-    return JSONResponse(content={"status": "ok"}, status_code=200)
+    return await webhook_submit_questionnaire(university, questionnaire_data)
 
 async def webhook_submit_questionnaire(university: str, data: QuestionnaireDataModel):
     try:
-        # Save data to Excel
         if DataProcessor.save_and_evaluate(data, university):
             return {"status": "success", "message": "Survey submitted successfully"}
         else:
