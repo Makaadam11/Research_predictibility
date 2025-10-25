@@ -23,13 +23,16 @@ app = FastAPI()
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost", "http://localhost:80", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
+BASIC_USER = os.environ.get("BASIC_AUTH_USER")
+BASIC_PASS = os.environ.get("BASIC_AUTH_PASS")
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
 
 class RegisterFormInputs(BaseModel):
     email: str
@@ -118,10 +121,6 @@ class ReportRequest(BaseModel):
 @app.post("/api/reports")
 async def generate_reports(request: ReportRequest):
     try:
-        # logger.info("Processing report generation request")
-        # logger.info(f"Request data: {request.data}")
-        # logger.info(f"Request charts: {request.charts}")
-        
         df = pd.DataFrame([item.dict() for item in request.data])
         reports = Reports(df)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -136,7 +135,6 @@ async def generate_reports(request: ReportRequest):
         report_path = f"../data/reports/Mental_Health_Report_{timestamp}.pdf"
         reports.generate_pdf_report(report_path, chart_images)
         
-        # Provide a link to view the report
         return {"message": "Report generated", "report_url": f"/api/reports/view/{timestamp}"}
     except Exception as e:
         logger.error(f"Error generating report: {str(e)}", exc_info=True)
@@ -159,10 +157,7 @@ async def delete_report(timestamp: str):
     else:
         raise HTTPException(status_code=404, detail="Report not found")
 
-BASIC_USER = os.environ.get("BASIC_AUTH_USER")
-BASIC_PASS = os.environ.get("BASIC_AUTH_PASS")
-ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+
 
 @app.middleware("http")
 async def security_gate(request: Request, call_next):
@@ -340,10 +335,8 @@ async def delete_user(email: str):
         raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
 
 def process_excel_data(df: pd.DataFrame) -> pd.DataFrame:
-    # Create a copy of the DataFrame to avoid SettingWithCopyWarning
     df = df.copy()
     
-    # Define required columns and their types
     numeric_columns = {
         'hours_per_week_university_work': 0,
         'exercise_per_week': 0,
@@ -357,14 +350,12 @@ def process_excel_data(df: pd.DataFrame) -> pd.DataFrame:
         'cost_of_study': 0
     }
     
-    # Process numeric columns
     for col, default in numeric_columns.items():
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(default).astype(int)
         else:
             df[col] = default
     
-    # Replace NaN values with None for non-numeric columns
     for col in df.columns:
         if col not in numeric_columns:
             df[col] = df[col].fillna('Not Provided')
@@ -381,21 +372,17 @@ async def get_dashboard_data(university: str = Query(None)):
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Data file not found")
         
-        # Read Excel file
         df = pd.read_excel(file_path, header=None)
         print("Original columns:", df.columns.tolist())
-        column_ids = df.iloc[1].copy()     # Set IDs as column names
+        column_ids = df.iloc[1].copy()
         df_cleaned = df.iloc[2:] 
         df_cleaned.columns = column_ids
         
-        # Process data
         df_processed = process_excel_data(df_cleaned)
         
-        # Filter by university if specified
         if university and university != 'All':
             df_processed = df_processed[df_processed['source'] == university]
         
-        # Convert to dictionary records
         data = df_processed.to_dict('records')
         
         return {"data": data}

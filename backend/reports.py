@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
-from models import AnthropicLanguageModel, GroqClient
+from models import GroqClient
 from PIL import Image
 matplotlib.use('Agg')
 from pathlib import Path

@@ -40,32 +40,6 @@ class GroqClient:
             print(f"Error generating report: {e}")
             return f"Error generating report: {str(e)}"
 
-class AnthropicLanguageModel:
-    def __init__(self):
-        self.client = anthropic.Anthropic(
-            api_key=antropic_key
-        )
-
-    def generate_report(self, prompt: str) -> str:
-        try:
-            response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=4000,
-                temperature=0.7,
-                system="You are a professional report writer specializing in mental health analysis. Format your response in clear sections with headers.",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
-            return response.content[0].text
-
-        except Exception as e:
-            print(f"Error generating report: {e}")
-            return f"Error generating report: {str(e)}"
-
 class QuestionnaireDataModel(BaseModel):
     answers: List[dict]
     source: str

@@ -1,0 +1,15 @@
+api_key.json
+/__pycache__/
+*.pyc
+__pycache__/
+*.xlsx
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.git
+.gitignore
