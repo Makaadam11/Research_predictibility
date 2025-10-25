@@ -5,3 +5,4 @@ data
 Final.csv
 requirements.txt
 backend/report_assets/*.*
+/.env
