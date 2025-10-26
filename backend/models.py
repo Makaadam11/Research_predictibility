@@ -1,13 +1,15 @@
 from pydantic import BaseModel
-import anthropic
 import json
 import os
 from typing import Optional, List, Union
 
-with open('api_key.json') as f:
-    api_keys = json.load(f)
-    antropic_key = api_keys['antropic_key']
-    grok_key = api_keys['grok_key']
+try:
+    with open('api_key.json') as f:
+        api_keys = json.load(f)
+        antropic_key = api_keys['antropic_key']
+        grok_key = api_keys['grok_key']
+except Exception as e:
+    pass
 
 from groq import Groq
 

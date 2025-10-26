@@ -4,7 +4,7 @@ import json
 from PIL import Image
 from typing import Dict
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Depends, Request, Query
+from fastapi import FastAPI, HTTPException, Depends, Request, Query, Response
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, validator
 from typing import List, Dict, Union
@@ -20,10 +20,14 @@ from data_processor import DataProcessor
 
 app = FastAPI()
 
-# Configure CORS
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost,http://localhost:80,http://localhost:3000"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "http://localhost:80", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -161,21 +165,31 @@ async def delete_report(timestamp: str):
 
 @app.middleware("http")
 async def security_gate(request: Request, call_next):
-    # Bypass dla webhooka, ale tylko z tajnym sekretem
     path = request.url.path
+
+    public_prefixes = (
+        "/api/login",
+        "/api/register",
+        "/api/courses",
+        "/api/departments",
+        "/api/dashboard",
+        "/api/reports/view",
+        "/api/submit",
+    )
+    if path.startswith(public_prefixes):
+        return await call_next(request)
+
     if path.startswith("/webhook"):
         secret = request.headers.get("x-webhook-secret") or request.query_params.get("secret")
         if WEBHOOK_SECRET and secret == WEBHOOK_SECRET:
             return await call_next(request)
         return JSONResponse({"detail": "Unauthorized webhook"}, status_code=401)
 
-    # Token (opcjonalnie)
     if ACCESS_TOKEN:
         token = request.headers.get("x-access-token") or request.headers.get("authorization", "").replace("Bearer ", "").strip()
         if token and token == ACCESS_TOKEN:
             return await call_next(request)
 
-    # Basic Auth (globalnie)
     if BASIC_USER and BASIC_PASS:
         auth = request.headers.get("authorization") or ""
         parts = auth.split(" ", 1)
@@ -192,6 +206,7 @@ async def security_gate(request: Request, call_next):
             status_code=401,
             headers={"WWW-Authenticate": 'Basic realm="Protected"'}
         )
+
     return await call_next(request)
 
 @app.get("/api/courses/{university}", response_model=CourseResponse)
